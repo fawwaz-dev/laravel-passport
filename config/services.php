@@ -34,5 +34,8 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
-
+    'passport' => [
+        'client_id' => env('PASSWORD_CLIENT_ID'),
+        'client_secret' => env('PASSWORD_CLIENT_SECRET'),
+    ],
 ];

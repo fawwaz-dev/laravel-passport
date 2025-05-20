@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
@@ -34,37 +36,31 @@ class AuthController extends Controller
         if (!$accessToken) {
             return response()->json(['message' => 'Failed to create access token'], 500);
         }
-        $refreshToken = $user->createToken('Personal Access Token')->refreshToken;
-        if (!$refreshToken) {
-            return response()->json(['message' => 'Failed to create refresh token'], 500);
-        }
+
 
         return response()->json(
-            ['message' => 'User registered successfully', 'accessToken' => $accessToken, 'refreshToken' => $refreshToken, 'user' => $user],
+            ['message' => 'User registered successfully', 'accessToken' => $accessToken,  'user' => $user],
             201,
         );
     }
 
-    public function login()
+    public function login(Request $request)
     {
-        $validator = Validator::make(request()->all(), [
-            'email' => 'required|string|email',
-            'password' => 'required|string',
-        ]);
+        $data = [
+            'grant_type'    => 'password',
+            'client_id'     => config('services.passport.client_id'),
+            'client_secret' => config('services.passport.client_secret'),
+            'username'      => $request->email,
+            'password'      => $request->password,
+            'scope'         => '',
+        ];
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
+        // 1. Buat PSR‑7 request internal
+        $internal = Request::create('/oauth/token', 'POST', $data);
+        // 2. Dispatch ke kernel Laravel
+        $response = app()->handle($internal);
 
-        $user = User::where('email', request('email'))->first();
-        if (!$user || !Hash::check(request('password'), $user->password)) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
-        }
-        $token = $user->createToken('Personal Access Token')->accessToken;
-        return response()->json(
-            ['message' => 'User logged in successfully', 'token' => $token, 'user' => $user],
-            200,
-        );
+        return response()->json(json_decode($response->getContent(), true), $response->getStatusCode());
     }
 
     public function logout(Request $request)
