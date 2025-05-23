@@ -13,13 +13,15 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register any application services.
      */
-    public function register(): void
-    {
-        $this->app->bind(MakesInternalRequests::class, InternalRequest::class);
-    }
+    public function register(): void {}
 
     /**
      * Bootstrap any application services.
      */
-    public function boot(): void {}
+    public function boot(): void
+    {
+        Passport::enablePasswordGrant();
+        Passport::tokensExpireIn(now()->addMinutes(1));
+        Passport::refreshTokensExpireIn(now()->addMinutes(1));
+    }
 }

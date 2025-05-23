@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
+use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 class AuthController extends Controller
 {
@@ -32,22 +33,24 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
-        $accessToken = $user->createToken('Personal Access Token')->accessToken;
-        if (!$accessToken) {
-            return response()->json(['message' => 'Failed to create access token'], 500);
-        }
-
-
         return response()->json(
-            ['message' => 'User registered successfully', 'accessToken' => $accessToken,  'user' => $user],
+            ['message' => 'User registered successfully',  'user' => $user],
             201,
         );
     }
 
     public function login(Request $request)
     {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|email|max:255|exists:users',
+            'password' => 'required|string|min:8',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), 422);
+        }
         $data = [
-            'grant_type'    => 'password',
+            'grant_type'    => $request->grant_type,
             'client_id'     => config('services.passport.client_id'),
             'client_secret' => config('services.passport.client_secret'),
             'username'      => $request->email,
@@ -55,12 +58,22 @@ class AuthController extends Controller
             'scope'         => '',
         ];
 
-        // 1. Buat PSR‑7 request internal
-        $internal = Request::create('/oauth/token', 'POST', $data);
-        // 2. Dispatch ke kernel Laravel
-        $response = app()->handle($internal);
+        // Buat PSR-7 request internal
+        $symfony = SymfonyRequest::create(
+            '/oauth/token',
+            'POST',
+            $data,
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded']
+        );
+        $req = Request::createFromBase($symfony);
+        app()->instance('request', $req);
 
-        return response()->json(json_decode($response->getContent(), true), $response->getStatusCode());
+        // Dispatch tanpa HTTP eksternal
+        $res = app()->handle($req);
+
+        return response()->json(json_decode($res->getContent(), true), $res->getStatusCode());
     }
 
     public function logout(Request $request)
@@ -74,5 +87,42 @@ class AuthController extends Controller
             return response()->json(['message' => 'User logged out successfully'], 200);
         }
         return response()->json(['message' => 'User not found'], 404);
+    }
+
+    public function refresh(Request $request)
+    {
+        $validate = Validator::make($request->all(), [
+            'grant_type'    => 'required|string',
+            'refresh_token' => 'required|string',
+        ]);
+
+        if ($validate->fails()) {
+            return response()->json($validate->errors(), 422);
+        }
+
+        $data = [
+            'grant_type'    => $request->grant_type,
+            'client_id'     => config('services.passport.client_id'),
+            'client_secret' => config('services.passport.client_secret'),
+            'refresh_token' => $request->refresh_token,
+            'scope'         => '',
+        ];
+
+        // Buat PSR-7 request internal
+        $symfony = SymfonyRequest::create(
+            '/oauth/token',
+            'POST',
+            $data,
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded']
+        );
+        $req = Request::createFromBase($symfony);
+        app()->instance('request', $req);
+
+        // Dispatch tanpa HTTP eksternal
+        $res = app()->handle($req);
+
+        return response()->json(json_decode($res->getContent(), true), $res->getStatusCode());
     }
 }
